@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { useEditor } from "@/editor/use-editor";
 import { CommandIcon, Logout05Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Download, Upload } from "lucide-react";
 import { ShortcutsDialog } from "@/actions/components/shortcuts-dialog";
 import Image from "next/image";
 import { cn } from "@/utils/ui";
@@ -51,6 +52,29 @@ function ProjectDropdown() {
 	const router = useRouter();
 	const editor = useEditor();
 	const activeProject = useEditor((e) => e.project.getActive());
+	const templateInputRef = useRef<HTMLInputElement>(null);
+
+	const handleSaveAsTemplate = () => {
+		editor.project.saveAsTemplate();
+	};
+
+	const handleOpenTemplate = () => {
+		templateInputRef.current?.click();
+	};
+
+	const handleTemplateFileSelected = async (
+		e: React.ChangeEvent<HTMLInputElement>,
+	) => {
+		const file = e.target.files?.[0];
+		if (!file) return;
+		e.target.value = "";
+		try {
+			const id = await editor.project.createFromTemplate({ file });
+			router.push(`/editor/${id}`);
+		} catch {
+			// error toast already shown in manager
+		}
+	};
 
 	const handleExit = async () => {
 		if (isExiting) return;
@@ -139,6 +163,22 @@ function ProjectDropdown() {
 
 					<DropdownMenuSeparator />
 
+					<DropdownMenuItem
+						onClick={handleSaveAsTemplate}
+						icon={<Download className="size-4" />}
+					>
+						Save as template
+					</DropdownMenuItem>
+
+					<DropdownMenuItem
+						onClick={handleOpenTemplate}
+						icon={<Upload className="size-4" />}
+					>
+						Open template…
+					</DropdownMenuItem>
+
+					<DropdownMenuSeparator />
+
 					<DropdownMenuItem asChild icon={<FaDiscord className="size-4!" />}>
 						<Link
 							href={SOCIAL_LINKS.discord}
@@ -165,6 +205,13 @@ function ProjectDropdown() {
 			<ShortcutsDialog
 				isOpen={openDialog === "shortcuts"}
 				onOpenChange={(isOpen) => setOpenDialog(isOpen ? "shortcuts" : null)}
+			/>
+			<input
+				ref={templateInputRef}
+				type="file"
+				accept=".openproj"
+				className="hidden"
+				onChange={handleTemplateFileSelected}
 			/>
 		</>
 	);

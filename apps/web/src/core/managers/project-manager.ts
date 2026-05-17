@@ -11,6 +11,14 @@ import type { ExportOptions, ExportResult, ExportState } from "@/export";
 import { storageService } from "@/services/storage/service";
 import { toast } from "sonner";
 import { generateUUID } from "@/utils/id";
+import {
+	serializeTemplate,
+	deserializeTemplate,
+	base64ToFile,
+	OPENPROJ_MIME,
+	OPENPROJ_EXT,
+} from "@/project/template";
+import { downloadBuffer } from "@/export";
 import { UpdateProjectSettingsCommand } from "@/commands/project";
 import { DEFAULT_BACKGROUND_COLOR } from "@/background/color";
 import { DEFAULT_CANVAS_SIZE } from "@/canvas/sizes";
@@ -304,6 +312,70 @@ export class ProjectManager {
 			this.notify();
 		} catch (error) {
 			console.error("Failed to delete projects:", error);
+		}
+	}
+
+	async saveAsTemplate(): Promise<void> {
+		const project = this.active;
+		if (!project) return;
+
+		try {
+			const scenes = this.editor.scenes.getScenes();
+			const fullProject = { ...project, scenes };
+			const mediaAssets = await storageService.loadAllMediaAssets({
+				projectId: project.metadata.id,
+			});
+			const json = await serializeTemplate(fullProject, mediaAssets);
+			const encoder = new TextEncoder();
+			const buffer = encoder.encode(json).buffer as ArrayBuffer;
+			const filename = `${project.metadata.name}${OPENPROJ_EXT}`;
+			downloadBuffer({ buffer, filename, mimeType: OPENPROJ_MIME });
+			toast.success("Template saved", { description: filename });
+		} catch (error) {
+			toast.error("Failed to save template", {
+				description: error instanceof Error ? error.message : "Please try again",
+			});
+		}
+	}
+
+	async createFromTemplate({ file }: { file: File }): Promise<string> {
+		try {
+			const json = await file.text();
+			const { project, media } = deserializeTemplate(json);
+
+			await storageService.saveProject({ project });
+
+			for (const entry of media) {
+				const restoredFile = base64ToFile(entry.data, entry.name, entry.mimeType);
+				const mediaAsset: import("@/media/types").MediaAsset = {
+					id: entry.id,
+					name: entry.name,
+					type: entry.type as import("@/media/types").MediaType,
+					file: restoredFile,
+					width: entry.width,
+					height: entry.height,
+					duration: entry.duration,
+					thumbnailUrl: entry.thumbnailUrl,
+				};
+				await storageService.saveMediaAsset({
+					projectId: project.metadata.id,
+					mediaAsset,
+				});
+			}
+
+			this.updateMetadata(project);
+			this.notify();
+
+			toast.success("Template loaded", {
+				description: `Created "${project.metadata.name}"`,
+			});
+
+			return project.metadata.id;
+		} catch (error) {
+			toast.error("Failed to load template", {
+				description: error instanceof Error ? error.message : "Invalid .openproj file",
+			});
+			throw error;
 		}
 	}
 
